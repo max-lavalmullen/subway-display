@@ -99,6 +99,7 @@ cd subway_app
 *   **`mta_client.py`**: Handles logic for fetching, parsing, and paging MTA GTFS data.
 *   **`config.py`**: Central configuration file.
 *   **`upload.sh`**: Utility script to deploy code to the Pi via SCP.
+*   **`start.sh`**: Helper script for the Pi that creates the virtual environment, installs dependencies, and runs the app.
 
 ## 🤝 Contributing
 
