@@ -85,7 +85,7 @@ bash upload.sh
 SSH into your Pi and run the start script. This handles all dependency installation (venv) automatically.
 
 ```bash
-ssh maxpi@<your-pi-ip>
+ssh pi@<your-pi-ip>
 cd subway_app
 ./start.sh
 ```
