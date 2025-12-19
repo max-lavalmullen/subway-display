@@ -85,6 +85,52 @@ HTML_TEMPLATE = """
             color: #ff0000;
             margin-top: 100px;
         }
+
+        /* --- New Split Layout CSS --- */
+        #content {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        .left-panel {
+            flex: 0 0 70%;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px dashed #333;
+        }
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding-left: 5px;
+            justify-content: flex-start;
+            padding-top: 5px;
+        }
+
+        /* Large Rows (Left) */
+        .row-large {
+            display: flex;
+            align-items: center;
+            height: 50%;
+            padding-left: 10px;
+        }
+        .rank-large { font-size: 40px; color: #888; margin-right: 15px; font-family: 'Courier New'; }
+        .bullet-large { width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; color: white; margin-right: 20px; }
+        .time-large { font-size: 50px; color: #ffb81c; font-family: 'Courier New'; font-weight: bold; }
+
+        /* Small Rows (Right) */
+        .row-small {
+            display: flex;
+            align-items: center;
+            height: 22%; /* Slightly taller */
+            font-family: 'Courier New';
+            font-size: 25px; /* Larger font */
+            margin-bottom: 2px;
+        }
+        .rank-small { color: #888; margin-right: 8px; width: 25px; text-align: right;}
+        .bullet-small { width: 24px; height: 24px; border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: white;}
+        .time-small { color: #ffb81c; font-weight: bold; }
+
     </style>
     <script>
         function updateDisplay() {
@@ -99,27 +145,39 @@ HTML_TEMPLATE = """
                         return;
                     }
 
-                    data.forEach(train => {
-                        const row = document.createElement('div');
-                        row.className = 'row';
-                        
-                        const rank = document.createElement('div');
-                        rank.className = 'rank';
-                        rank.innerText = train.rank + '.';
+                    // Create Panels
+                    const leftPanel = document.createElement('div');
+                    leftPanel.className = 'left-panel';
+                    
+                    const rightPanel = document.createElement('div');
+                    rightPanel.className = 'right-panel';
 
-                        const bullet = document.createElement('div');
-                        bullet.className = `bullet line-${train.line}`;
-                        bullet.innerText = train.line;
-                        
-                        const time = document.createElement('div');
-                        time.className = 'time';
-                        time.innerText = train.time + ' min';
-                        
-                        row.appendChild(rank);
-                        row.appendChild(bullet);
-                        row.appendChild(time);
-                        container.appendChild(row);
+                    // --- Render Top 2 (Left Panel) ---
+                    data.slice(0, 2).forEach(train => {
+                        const row = document.createElement('div');
+                        row.className = 'row-large';
+                        row.innerHTML = `
+                            <div class="rank-large">${train.rank}.</div>
+                            <div class="bullet-large line-${train.line}">${train.line}</div>
+                            <div class="time-large">${train.time} mins</div>
+                        `;
+                        leftPanel.appendChild(row);
                     });
+
+                    // --- Render Rest (Right Panel) ---
+                    data.slice(2).forEach(train => {
+                        const row = document.createElement('div');
+                        row.className = 'row-small';
+                        row.innerHTML = `
+                            <div class="rank-small">${train.rank}</div>
+                            <div class="bullet-small line-${train.line}">${train.line}</div>
+                            <div class="time-small">${train.time}m</div>
+                        `;
+                        rightPanel.appendChild(row);
+                    });
+
+                    container.appendChild(leftPanel);
+                    container.appendChild(rightPanel);
                 });
         }
         setInterval(updateDisplay, 1000);

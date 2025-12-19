@@ -16,5 +16,6 @@ pip install -r requirements.txt > /dev/null 2>&1
 
 # 4. Start the Application
 echo "🚇🚂 Starting Subway App..."
-# Use exec so this script is replaced by the python process
-exec python3 app.py
+# Use exec so this script is replaced by the python process.
+# Sudo is required for RGB Matrix hardware access.
+exec sudo $(which python3) main.py

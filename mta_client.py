@@ -50,16 +50,5 @@ class MTAClient:
         if not self.cached_arrivals:
             return []
 
-        # 1. First slot is ALWAYS the next train (Rank 1)
-        first_train = self.cached_arrivals[0]
-        
-        # 2. If that's the only train, just show it
-        if len(self.cached_arrivals) == 1:
-            return [first_train]
-
-        # 3. Second slot cycles through the rest (Rank 2, 3, 4...)
-        remaining_trains = self.cached_arrivals[1:]
-        cycle_index = int(time.time() / config.PAGE_DURATION) % len(remaining_trains)
-        second_train = remaining_trains[cycle_index]
-        
-        return [first_train, second_train]
+        # Return top 7 trains for the new layout (2 big + 5 small list)
+        return self.cached_arrivals[:7]
