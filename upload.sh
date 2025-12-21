@@ -5,8 +5,8 @@ GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 # --- CONFIGURATION ---
-PI_USER="pi"
-PI_IP="<your-pi-ip>"
+PI_USER="maxpi"
+PI_IP="192.168.1.242"
 # ---------------------
 
 echo "🚀 Uploading Subway App to $PI_USER@$PI_IP..."

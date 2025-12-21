@@ -39,3 +39,4 @@ output.log
 
 # Project specific
 upload.sh
+config.py

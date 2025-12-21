@@ -32,21 +32,21 @@ git clone https://github.com/yourusername/subway-project.git
 cd subway-project
 ```
 
-### 2. Install Dependencies (Local)
-It is recommended to use a virtual environment.
+### 2. Configure the App
+Copy the example configuration file and edit it with your station details.
+```bash
+cp config.py.example config.py
+```
+*   **TARGET_STATION_ID:** Search `stations.py` for your stop's ID.
+*   **DIRECTION:** `N` for Uptown, `S` for Downtown.
+
+### 3. Install Dependencies (Local Simulator)
+If you want to run the web simulator on your computer:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 3. Configure the Station
-Edit `config.py` to set your desired station and direction.
-
-```python
-TARGET_STATION_ID = "120" 
-DIRECTION = "N"            # N = Northbound, S = Southbound
-BRIGHTNESS = 50            # LED Brightness (0-100)
+python3 app.py
 ```
 
 #### Finding Your Station ID
