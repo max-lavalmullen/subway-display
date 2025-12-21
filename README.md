@@ -5,10 +5,10 @@ A Python-based application that fetches real-time MTA subway arrivals and displa
 ## 🌟 Features
 
 *   **Real-time Tracking:** Fetches live data from the MTA GTFS-Realtime feed.
-*   **Pagination:** Cycles through upcoming train arrivals (2 per screen).
+*   **Split Layout:** Displays the top 2 trains prominently on the left, with a compact list of upcoming arrivals on the right.
 *   **Web Simulator:** View the matrix output in your browser for easy debugging.
 *   **Hardware Ready:** Designed to drive an Adafruit RGB Matrix Bonnet + 64x32 HUB75 LED Matrix.
-*   **Configurable:** Easily change stations, directions, and refresh rates.
+*   **Configurable:** Easily change stations, directions, brightness, and refresh rates.
 
 ## 🛠 Hardware Requirements
 
@@ -22,7 +22,9 @@ A Python-based application that fetches real-time MTA subway arrivals and displa
 *   Python 3.7+
 *   `hzeller/rpi-rgb-led-matrix` library (for Raspberry Pi usage).
 
-## 🚀 Installation & Setup
+## 🚀 Development Setup (Mac/PC)
+
+These steps are for running the **simulator** on your local machine. For Raspberry Pi deployment, skip to the [Raspberry Pi Deployment](#-raspberry-pi-deployment) section.
 
 ### 1. Clone the Repository
 ```bash
@@ -30,7 +32,7 @@ git clone https://github.com/yourusername/subway-project.git
 cd subway-project
 ```
 
-### 2. Install Python Dependencies
+### 2. Install Dependencies (Local)
 It is recommended to use a virtual environment.
 ```bash
 python3 -m venv venv
@@ -40,13 +42,22 @@ pip install -r requirements.txt
 
 ### 3. Configure the Station
 Edit `config.py` to set your desired station and direction.
-*   **TARGET_STATION_ID:** Find your station ID in the [MTA GTFS Static Data](http://web.mta.info/developers/data/nyct/subway/Stations.csv) (e.g., `120` for 96 St).
-*   **DIRECTION:** `N` for Northbound, `S` for Southbound.
 
 ```python
 TARGET_STATION_ID = "120" 
-DIRECTION = "N"
+DIRECTION = "N"            # N = Northbound, S = Southbound
+BRIGHTNESS = 50            # LED Brightness (0-100)
 ```
+
+#### Finding Your Station ID
+The project includes a `stations.py` file containing all NYC Subway station IDs. You can search this file to find the ID for your stop.
+
+**Example: Finding "Union Square"**
+```bash
+grep "Union Sq" stations.py
+# Output: "635": "14 St-Union Sq", ...
+```
+Copy the ID (e.g., `635`) into your `config.py`.
 
 ## 🖥 Local Development (Simulator)
 
@@ -98,6 +109,7 @@ cd subway_app
 *   **`main.py`**: Entry point for the **Raspberry Pi**. Drives the physical LED Matrix.
 *   **`mta_client.py`**: Handles logic for fetching, parsing, and paging MTA GTFS data.
 *   **`config.py`**: Central configuration file.
+*   **`stations.py`**: Dictionary lookup for all NYC Subway station IDs.
 *   **`upload.sh`**: Utility script to deploy code to the Pi via SCP.
 *   **`start.sh`**: Helper script for the Pi that creates the virtual environment, installs dependencies, and runs the app.
 

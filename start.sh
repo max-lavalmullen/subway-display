@@ -3,8 +3,8 @@
 
 # 1. Ensure Virtual Environment exists
 if [ ! -d "venv" ]; then
-    echo "📦 Creating virtual environment..."
-    python3 -m venv venv
+    echo "📦 Creating virtual environment with system access..."
+    python3 -m venv --system-site-packages venv
 fi
 
 # 2. Activate Virtual Environment

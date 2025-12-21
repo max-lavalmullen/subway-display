@@ -50,6 +50,7 @@ def main():
     options.parallel = 1
     options.hardware_mapping = 'adafruit-hat'
     options.gpio_slowdown = 4
+    options.brightness = config.BRIGHTNESS
     options.drop_privileges = False 
 
     matrix = RGBMatrix(options = options)
