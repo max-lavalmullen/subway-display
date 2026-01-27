@@ -1,12 +1,4 @@
-# Build stage for React frontend
-FROM node:20-alpine AS frontend-build
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
-
-# Production stage
+# Production image - frontend pre-built and included in repo
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -18,8 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 COPY app.py mta_client.py config.py stations.py ./
 COPY station_config.json ./
 
-# Copy built frontend
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+# Copy pre-built frontend
+COPY frontend/dist ./frontend/dist
 
 # Expose port
 EXPOSE 5001

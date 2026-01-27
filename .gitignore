@@ -43,4 +43,3 @@ config.py
 
 # Frontend
 node_modules/
-frontend/dist/
