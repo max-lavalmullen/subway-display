@@ -1,205 +1,164 @@
-from flask import Flask, jsonify
-from mta_client import MTAClient
+import json
+import os
+import uuid
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from mta_client import MTAClient, get_lines_for_station
+from stations import STATIONS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
+CORS(app)  # Enable CORS for development
+
 client = MTAClient()
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'station_config.json')
 
-# --- WEB SIMULATOR HTML ---
-# (Kept inside app.py for simplicity of single-file distribution if needed, 
-# but could be moved to templates/index.html)
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Matrix Simulator</title>
-    <style>
-        body { background: #222; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .bonnet {
-            width: 640px;
-            height: 320px;
-            background-color: #000;
-            border: 20px solid #333;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            padding: 10px;
-            box-sizing: border-box;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
-            position: relative;
-            overflow: hidden;
-        }
-        .grid-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-image: 
-                linear-gradient(#111 1px, transparent 1px),
-                linear-gradient(90deg, #111 1px, transparent 1px);
-            background-size: 10px 10px;
-            z-index: 2;
-            pointer-events: none;
-        }
-        .row {
-            display: flex;
-            align-items: center;
-            height: 50%;
-            z-index: 1;
-            padding-left: 20px;
-        }
-        .bullet {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: Helvetica, Arial, sans-serif;
-            font-weight: bold;
-            font-size: 50px;
-            margin-right: 30px;
-            color: white;
-        }
-        .line-1, .line-2, .line-3 { background-color: #EE352E; } /* Red Line */
-        .line-4, .line-5, .line-6 { background-color: #00933C; } /* Green Line */
-        .line-7 { background-color: #B933AD; } /* Purple Line */
-        
-        .rank {
-            font-size: 40px;
-            color: #888;
-            margin-right: 20px;
-            width: 50px;
-            text-align: right;
-            font-family: 'Courier New', Courier, monospace;
-        }
 
-        .time {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 60px;
-            color: #ffb81c; /* Amber/Orange LED color */
-            font-weight: bold;
-            text-shadow: 0 0 10px #ffb81c;
-        }
-        .no-trains {
-            width: 100%;
-            text-align: center;
-            font-size: 50px;
-            color: #ff0000;
-            margin-top: 100px;
-        }
+def load_station_config():
+    """Load station configuration from JSON file."""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {"stations": []}
 
-        /* --- New Split Layout CSS --- */
-        #content {
-            display: flex;
-            width: 100%;
-            height: 100%;
-        }
-        .left-panel {
-            flex: 0 0 70%;
-            display: flex;
-            flex-direction: column;
-            border-right: 2px dashed #333;
-        }
-        .right-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding-left: 5px;
-            justify-content: flex-start;
-            padding-top: 5px;
-        }
 
-        /* Large Rows (Left) */
-        .row-large {
-            display: flex;
-            align-items: center;
-            height: 50%;
-            padding-left: 10px;
-        }
-        .rank-large { font-size: 40px; color: #888; margin-right: 15px; font-family: 'Courier New'; }
-        .bullet-large { width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; color: white; margin-right: 20px; }
-        .time-large { font-size: 50px; color: #ffb81c; font-family: 'Courier New'; font-weight: bold; }
+def save_station_config(config):
+    """Save station configuration to JSON file."""
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=2)
 
-        /* Small Rows (Right) */
-        .row-small {
-            display: flex;
-            align-items: center;
-            height: 22%; /* Slightly taller */
-            font-family: 'Courier New';
-            font-size: 25px; /* Larger font */
-            margin-bottom: 2px;
-        }
-        .rank-small { color: #888; margin-right: 8px; width: 25px; text-align: right;}
-        .bullet-small { width: 24px; height: 24px; border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: white;}
-        .time-small { color: #ffb81c; font-weight: bold; }
 
-    </style>
-    <script>
-        function updateDisplay() {
-            fetch('/api/data')
-                .then(response => response.json())
-                .then(data => {
-                    const container = document.getElementById('content');
-                    container.innerHTML = '';
-                    
-                    if (data.length === 0) {
-                        container.innerHTML = '<div class="no-trains">NO TRAINS</div>';
-                        return;
-                    }
+# --- API Endpoints ---
 
-                    // Create Panels
-                    const leftPanel = document.createElement('div');
-                    leftPanel.className = 'left-panel';
-                    
-                    const rightPanel = document.createElement('div');
-                    rightPanel.className = 'right-panel';
+@app.route('/api/stations', methods=['GET'])
+def get_stations():
+    """Get all configured stations."""
+    config = load_station_config()
+    return jsonify(config['stations'])
 
-                    // --- Render Top 2 (Left Panel) ---
-                    data.slice(0, 2).forEach(train => {
-                        const row = document.createElement('div');
-                        row.className = 'row-large';
-                        row.innerHTML = `
-                            <div class="rank-large">${train.rank}.</div>
-                            <div class="bullet-large line-${train.line}">${train.line}</div>
-                            <div class="time-large">${train.time} mins</div>
-                        `;
-                        leftPanel.appendChild(row);
-                    });
 
-                    // --- Render Rest (Right Panel) ---
-                    data.slice(2).forEach(train => {
-                        const row = document.createElement('div');
-                        row.className = 'row-small';
-                        row.innerHTML = `
-                            <div class="rank-small">${train.rank}</div>
-                            <div class="bullet-small line-${train.line}">${train.line}</div>
-                            <div class="time-small">${train.time}m</div>
-                        `;
-                        rightPanel.appendChild(row);
-                    });
+@app.route('/api/stations', methods=['POST'])
+def add_station():
+    """Add a new station to monitor."""
+    data = request.get_json()
 
-                    container.appendChild(leftPanel);
-                    container.appendChild(rightPanel);
-                });
-        }
-        setInterval(updateDisplay, 1000);
-    </script>
-</head>
-<body>
-    <h2>96 St (Uptown) Simulator</h2>
-    <div class="bonnet">
-        <div class="grid-overlay"></div>
-        <div id="content" style="width:100%; height:100%">Loading...</div>
-    </div>
-</body>
-</html>
-"""
+    if not data or 'id' not in data:
+        return jsonify({'error': 'Station ID is required'}), 400
+
+    station_id = data['id']
+    direction = data.get('direction', 'N')
+    name = data.get('name', STATIONS.get(station_id, station_id))
+
+    config = load_station_config()
+
+    # Check for duplicates
+    for station in config['stations']:
+        if station['id'] == station_id and station['direction'] == direction:
+            return jsonify({'error': 'Station already exists'}), 409
+
+    new_station = {
+        'id': station_id,
+        'direction': direction,
+        'name': name,
+        'uuid': str(uuid.uuid4())  # Unique ID for frontend
+    }
+
+    config['stations'].append(new_station)
+    save_station_config(config)
+
+    return jsonify(new_station), 201
+
+
+@app.route('/api/stations/<station_uuid>', methods=['DELETE'])
+def delete_station(station_uuid):
+    """Remove a station from monitoring."""
+    config = load_station_config()
+
+    # Find and remove station by UUID or by id_direction
+    original_length = len(config['stations'])
+    config['stations'] = [
+        s for s in config['stations']
+        if s.get('uuid') != station_uuid and f"{s['id']}_{s['direction']}" != station_uuid
+    ]
+
+    if len(config['stations']) == original_length:
+        return jsonify({'error': 'Station not found'}), 404
+
+    save_station_config(config)
+    return jsonify({'success': True}), 200
+
+
+@app.route('/api/stations/available', methods=['GET'])
+def get_available_stations():
+    """Search available stations from stations.py."""
+    query = request.args.get('q', '').lower()
+
+    results = []
+    for station_id, name in STATIONS.items():
+        if query in name.lower() or query in station_id.lower():
+            results.append({
+                'id': station_id,
+                'name': name,
+                'lines': get_lines_for_station(station_id)
+            })
+
+    # Sort by name and limit results
+    results.sort(key=lambda x: x['name'])
+    return jsonify(results[:50])
+
+
+@app.route('/api/arrivals', methods=['GET'])
+def get_arrivals():
+    """Get arrivals for all configured stations."""
+    config = load_station_config()
+
+    if not config['stations']:
+        return jsonify({})
+
+    results = client.get_arrivals_for_stations(config['stations'])
+
+    # Transform results to include station metadata
+    response = []
+    for station in config['stations']:
+        key = f"{station['id']}_{station['direction']}"
+        station_data = results.get(key, {})
+        response.append({
+            'id': station['id'],
+            'uuid': station.get('uuid', key),
+            'direction': station['direction'],
+            'name': station['name'],
+            'arrivals': station_data.get('arrivals', [])
+        })
+
+    return jsonify(response)
+
+
+# --- Legacy API for backward compatibility ---
+
+@app.route('/api/data', methods=['GET'])
+def get_data():
+    """Legacy endpoint for LED matrix display."""
+    return jsonify(client.get_current_page())
+
+
+# --- Static File Serving ---
 
 @app.route('/')
-def home():
-    return HTML_TEMPLATE
+def serve_frontend():
+    """Serve the React frontend."""
+    return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/api/data')
-def get_data():
-    return jsonify(client.get_current_page())
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files from the React build."""
+    if os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    # Fallback to index.html for SPA routing
+    return send_from_directory(app.static_folder, 'index.html')
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001, debug=True)

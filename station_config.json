@@ -1,0 +1,9 @@
+{
+  "stations": [
+    {
+      "id": "120",
+      "direction": "N",
+      "name": "96 St"
+    }
+  ]
+}

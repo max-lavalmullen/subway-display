@@ -40,3 +40,7 @@ output.log
 # Project specific
 upload.sh
 config.py
+
+# Frontend
+node_modules/
+frontend/dist/
