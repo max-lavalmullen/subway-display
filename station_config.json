@@ -1,9 +1,30 @@
 {
   "stations": [
     {
+      "id": "A21",
+      "direction": "all",
+      "name": "81 St-Museum of Natural History",
+      "uuid": "e83d28f5-d6d8-4460-ba2a-936c8564a9dd",
+      "isMain": false
+    },
+    {
       "id": "120",
+      "direction": "S",
+      "name": "96 St",
+      "uuid": "37048860-f744-47eb-a0b4-bd2536fc2c79",
+      "isMain": true
+    },
+    {
+      "id": "134",
       "direction": "N",
-      "name": "96 St"
+      "name": "Houston St",
+      "uuid": "ea307042-ece1-485d-9f74-ae2e98966d92"
+    },
+    {
+      "id": "A33",
+      "direction": "N",
+      "name": "Spring St",
+      "uuid": "4fe55ecc-ba2a-4fd3-be56-096e6ecf8ceb"
     }
   ]
 }

@@ -16,6 +16,9 @@ FEED_URLS = {
     "SIR": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
 }
 
+ALERTS_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts"
+ALERTS_CACHE_TTL = 60  # Cache alerts for 60 seconds
+
 # Map station ID prefixes to their feed groups
 # Numeric IDs (1xx, 2xx, etc.) are typically for numbered lines
 # Letter prefixes indicate specific line groups
@@ -64,6 +67,42 @@ def get_feed_for_station(station_id):
     return FEED_URLS[feed_key]
 
 
+# Destination/terminal stations for each line by direction
+# N = Uptown/Bronx/Queens, S = Downtown/Brooklyn
+LINE_DESTINATIONS = {
+    "1": {"N": "Van Cortlandt Park", "S": "South Ferry"},
+    "2": {"N": "Wakefield-241 St", "S": "Flatbush Av"},
+    "3": {"N": "Harlem-148 St", "S": "New Lots Av"},
+    "4": {"N": "Woodlawn", "S": "Crown Hts-Utica Av"},
+    "5": {"N": "Eastchester-Dyre Av", "S": "Flatbush Av"},
+    "6": {"N": "Pelham Bay Park", "S": "Brooklyn Bridge"},
+    "7": {"N": "Flushing-Main St", "S": "34 St-Hudson Yards"},
+    "A": {"N": "Inwood-207 St", "S": "Far Rockaway / Ozone Park"},
+    "B": {"N": "Bedford Park Blvd", "S": "Brighton Beach"},
+    "C": {"N": "168 St", "S": "Euclid Av"},
+    "D": {"N": "Norwood-205 St", "S": "Coney Island"},
+    "E": {"N": "Jamaica Center", "S": "World Trade Center"},
+    "F": {"N": "Jamaica-179 St", "S": "Coney Island"},
+    "G": {"N": "Court Sq", "S": "Church Av"},
+    "J": {"N": "Jamaica Center", "S": "Broad St"},
+    "L": {"N": "8 Av", "S": "Canarsie-Rockaway Pkwy"},
+    "M": {"N": "Forest Hills-71 Av", "S": "Middle Village"},
+    "N": {"N": "Astoria-Ditmars Blvd", "S": "Coney Island"},
+    "Q": {"N": "96 St", "S": "Coney Island"},
+    "R": {"N": "Forest Hills-71 Av", "S": "Bay Ridge-95 St"},
+    "W": {"N": "Astoria-Ditmars Blvd", "S": "Whitehall St"},
+    "Z": {"N": "Jamaica Center", "S": "Broad St"},
+    "S": {"N": "Times Sq", "S": "Grand Central"},  # 42nd St Shuttle
+    "SIR": {"N": "St George", "S": "Tottenville"},
+}
+
+
+def get_destination_for_line(route_id, direction):
+    """Get the terminal/destination name for a line and direction."""
+    destinations = LINE_DESTINATIONS.get(route_id, {})
+    return destinations.get(direction, "")
+
+
 def get_lines_for_station(station_id):
     """Return likely lines that serve this station based on prefix."""
     if not station_id:
@@ -102,6 +141,9 @@ class MTAClient:
         self.last_fetch_time = 0
         # Cache for multi-station fetches: {station_key: {arrivals: [], last_fetch: timestamp}}
         self.station_cache = {}
+        # Cache for service alerts
+        self.alerts_cache = []
+        self.alerts_last_fetch = 0
 
     def fetch_data(self):
         """Legacy method for single station fetch (backward compatibility)."""
@@ -177,10 +219,7 @@ class MTAClient:
                             if arr_time > current_time:
                                 minutes = int((arr_time - current_time) / 60)
                                 line = entity.trip_update.trip.route_id
-                                destination = ""
-                                if entity.trip_update.trip.HasField('trip_id'):
-                                    # Could parse destination from trip_id if needed
-                                    pass
+                                destination = get_destination_for_line(line, direction)
                                 arrivals.append({
                                     'line': line,
                                     'time': minutes,
@@ -237,8 +276,131 @@ class MTAClient:
 
         return results
 
+    def fetch_service_alerts(self, lines_filter=None):
+        """
+        Fetch service alerts from MTA.
+
+        Args:
+            lines_filter: Optional list of line IDs to filter alerts (e.g., ['1', '2', 'A'])
+
+        Returns:
+            List of alert dicts with id, header, description, routes, severity, active_period
+        """
+        current_time = time.time()
+
+        # Check cache
+        if current_time - self.alerts_last_fetch < ALERTS_CACHE_TTL:
+            return self._filter_alerts(self.alerts_cache, lines_filter)
+
+        try:
+            print("Fetching MTA service alerts...")
+            response = requests.get(ALERTS_URL, timeout=10)
+            feed = gtfs_realtime_pb2.FeedMessage()
+            feed.ParseFromString(response.content)
+
+            alerts = []
+
+            for entity in feed.entity:
+                if entity.HasField('alert'):
+                    alert = entity.alert
+
+                    # Extract affected routes
+                    routes = []
+                    for informed in alert.informed_entity:
+                        if informed.HasField('route_id'):
+                            route_id = informed.route_id
+                            if route_id and route_id not in routes:
+                                routes.append(route_id)
+
+                    # Extract header text
+                    header = ""
+                    if alert.header_text and alert.header_text.translation:
+                        for trans in alert.header_text.translation:
+                            if trans.language == 'en' or not trans.language:
+                                header = trans.text
+                                break
+
+                    # Extract description text
+                    description = ""
+                    if alert.description_text and alert.description_text.translation:
+                        for trans in alert.description_text.translation:
+                            if trans.language == 'en' or not trans.language:
+                                description = trans.text
+                                break
+
+                    # Extract active period
+                    active_period = {"start": None, "end": None}
+                    if alert.active_period:
+                        period = alert.active_period[0]
+                        if period.HasField('start'):
+                            active_period["start"] = period.start
+                        if period.HasField('end'):
+                            active_period["end"] = period.end
+
+                    # Determine severity based on header/description keywords
+                    severity = self._determine_severity(header, description)
+
+                    alert_data = {
+                        "id": entity.id,
+                        "header": header,
+                        "description": description,
+                        "routes": routes,
+                        "severity": severity,
+                        "active_period": active_period,
+                        "updated_at": current_time
+                    }
+
+                    alerts.append(alert_data)
+
+            self.alerts_cache = alerts
+            self.alerts_last_fetch = current_time
+
+            return self._filter_alerts(alerts, lines_filter)
+
+        except Exception as e:
+            print(f"Error fetching MTA alerts: {e}")
+            # Return cached alerts if available
+            return self._filter_alerts(self.alerts_cache, lines_filter)
+
+    def _determine_severity(self, header, description):
+        """Determine alert severity based on keywords."""
+        text = (header + " " + description).lower()
+
+        major_keywords = ["suspended", "no service", "service suspended", "major delays"]
+        minor_keywords = ["delays", "delayed", "slow speeds", "signal problems"]
+
+        for keyword in major_keywords:
+            if keyword in text:
+                return "major"
+
+        for keyword in minor_keywords:
+            if keyword in text:
+                return "minor"
+
+        return "info"
+
+    def _filter_alerts(self, alerts, lines_filter):
+        """Filter alerts to only those affecting specified lines."""
+        if not lines_filter:
+            return alerts
+
+        # Normalize filter to uppercase
+        lines_filter = [line.upper() for line in lines_filter]
+
+        filtered = []
+        for alert in alerts:
+            # Check if any of the alert's routes match the filter
+            for route in alert.get("routes", []):
+                if route.upper() in lines_filter:
+                    filtered.append(alert)
+                    break
+
+        return filtered
+
     def clear_cache(self):
         """Clear all cached data."""
         self.station_cache = {}
         self.cached_arrivals = []
         self.last_fetch_time = 0
+        self.alerts_cache = []
+        self.alerts_last_fetch = 0

@@ -13,6 +13,16 @@ services:
     networks:
       - homelab_default
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: subway_tunnel
+    restart: unless-stopped
+    command: tunnel --url http://subway-dashboard:5001
+    depends_on:
+      - subway-dashboard
+    networks:
+      - homelab_default
+
 networks:
   homelab_default:
     external: true

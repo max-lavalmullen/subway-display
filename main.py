@@ -33,7 +33,7 @@ def draw_bullet(canvas, x, y, line_name, is_small=False):
     
     # Draw Text
     font = graphics.Font()
-    font.LoadFont("fonts/4x6.bdf") 
+    font.LoadFont("../rpi-rgb-led-matrix/fonts/4x6.bdf") 
     
     text_x = x + 4
     if len(line_name) > 1: text_x = x + 2

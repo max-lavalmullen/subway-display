@@ -90,6 +90,72 @@ def delete_station(station_uuid):
     return jsonify({'success': True}), 200
 
 
+@app.route('/api/stations/<station_uuid>/main', methods=['POST'])
+def set_main_station(station_uuid):
+    """Set a station as the main station."""
+    config = load_station_config()
+
+    found = False
+    for station in config['stations']:
+        # Match by UUID or by id_direction for legacy stations
+        station_key = station.get('uuid') or f"{station['id']}_{station['direction']}"
+        if station_key == station_uuid:
+            station['isMain'] = True
+            # Add UUID if missing
+            if not station.get('uuid'):
+                station['uuid'] = str(uuid.uuid4())
+            found = True
+        else:
+            station['isMain'] = False
+
+    if not found:
+        return jsonify({'error': 'Station not found'}), 404
+
+    save_station_config(config)
+    return jsonify({'success': True}), 200
+
+
+@app.route('/api/stations/<station_uuid>/main', methods=['DELETE'])
+def unset_main_station(station_uuid):
+    """Remove main station status."""
+    config = load_station_config()
+
+    for station in config['stations']:
+        # Match by UUID or by id_direction for legacy stations
+        station_key = station.get('uuid') or f"{station['id']}_{station['direction']}"
+        if station_key == station_uuid:
+            station['isMain'] = False
+
+    save_station_config(config)
+    return jsonify({'success': True}), 200
+
+
+@app.route('/api/stations/<station_uuid>/direction', methods=['POST'])
+def set_station_direction(station_uuid):
+    """Change a station's direction (N, S, or all)."""
+    data = request.get_json()
+    new_direction = data.get('direction')
+
+    if new_direction not in ['N', 'S', 'all']:
+        return jsonify({'error': 'Direction must be N, S, or all'}), 400
+
+    config = load_station_config()
+
+    found = False
+    for station in config['stations']:
+        station_key = station.get('uuid') or f"{station['id']}_{station['direction']}"
+        if station_key == station_uuid:
+            station['direction'] = new_direction
+            found = True
+            break
+
+    if not found:
+        return jsonify({'error': 'Station not found'}), 404
+
+    save_station_config(config)
+    return jsonify({'success': True}), 200
+
+
 @app.route('/api/stations/available', methods=['GET'])
 def get_available_stations():
     """Search available stations from stations.py."""
@@ -117,22 +183,79 @@ def get_arrivals():
     if not config['stations']:
         return jsonify({})
 
-    results = client.get_arrivals_for_stations(config['stations'])
+    # Build list of station configs, expanding "all" direction to N and S
+    expanded_configs = []
+    for station in config['stations']:
+        if station['direction'] == 'all':
+            # Fetch both directions
+            expanded_configs.append({**station, 'direction': 'N', '_original_direction': 'all'})
+            expanded_configs.append({**station, 'direction': 'S', '_original_direction': 'all'})
+        else:
+            expanded_configs.append(station)
+
+    results = client.get_arrivals_for_stations(expanded_configs)
 
     # Transform results to include station metadata
     response = []
     for station in config['stations']:
-        key = f"{station['id']}_{station['direction']}"
-        station_data = results.get(key, {})
-        response.append({
-            'id': station['id'],
-            'uuid': station.get('uuid', key),
-            'direction': station['direction'],
-            'name': station['name'],
-            'arrivals': station_data.get('arrivals', [])
-        })
+        direction = station['direction']
+
+        if direction == 'all':
+            # Combine N and S arrivals
+            key_n = f"{station['id']}_N"
+            key_s = f"{station['id']}_S"
+            arrivals_n = results.get(key_n, {}).get('arrivals', [])
+            arrivals_s = results.get(key_s, {}).get('arrivals', [])
+
+            # Mark arrivals with their direction
+            for a in arrivals_n:
+                a['dir'] = 'N'
+            for a in arrivals_s:
+                a['dir'] = 'S'
+
+            # Combine and sort by time
+            all_arrivals = arrivals_n + arrivals_s
+            all_arrivals.sort(key=lambda x: x['time'])
+
+            response.append({
+                'id': station['id'],
+                'uuid': station.get('uuid', f"{station['id']}_all"),
+                'direction': 'all',
+                'name': station['name'],
+                'isMain': station.get('isMain', False),
+                'arrivals': all_arrivals[:10]
+            })
+        else:
+            key = f"{station['id']}_{direction}"
+            station_data = results.get(key, {})
+            response.append({
+                'id': station['id'],
+                'uuid': station.get('uuid', key),
+                'direction': direction,
+                'name': station['name'],
+                'isMain': station.get('isMain', False),
+                'arrivals': station_data.get('arrivals', [])
+            })
 
     return jsonify(response)
+
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    """Get service alerts for configured stations' lines."""
+    config = load_station_config()
+
+    # Extract unique lines from all configured stations
+    lines = set()
+    for station in config['stations']:
+        station_lines = get_lines_for_station(station['id'])
+        lines.update(station_lines)
+
+    # Fetch alerts filtered to relevant lines (or all if no stations configured)
+    lines_filter = list(lines) if lines else None
+    alerts = client.fetch_service_alerts(lines_filter)
+
+    return jsonify(alerts)
 
 
 # --- Legacy API for backward compatibility ---
