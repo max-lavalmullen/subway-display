@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import TrainArrival, { CompactArrival } from './TrainArrival'
 
 const LINE_COLORS = {
@@ -28,24 +29,45 @@ const LINE_COLORS = {
   'SIR': 'bg-[#0039A6]',
 }
 
-function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView = false }) {
+function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView = false, onDragStart, isDragging, dragPos, dragDimensions }) {
   const { name, direction, arrivals, isMain } = station
   const [menuOpen, setMenuOpen] = useState(false)
 
   const directionLabel = direction === 'N' ? 'Uptown' : direction === 'S' ? 'Downtown' : 'All'
 
-  return (
-    <div className={`bg-slate-800/50 rounded-xl border overflow-hidden transition-colors ${
-      isMain ? 'border-amber-500/50 ring-1 ring-amber-500/30' : 'border-slate-700/50 hover:border-slate-600'
-    }`}>
-      {/* Header */}
-      <div className="bg-slate-800 px-4 py-3 flex items-center justify-between border-b border-slate-700/50">
+  const cardContent = (
+    <div
+      data-station-id={station.uuid}
+      className={`bg-slate-800/50 rounded-xl border overflow-hidden ${
+        isMain ? 'border-amber-500/50 ring-1 ring-amber-500/30' : 'border-slate-700/50 hover:border-slate-600'
+      } ${isDragging ? 'shadow-2xl shadow-black/50 ring-2 ring-blue-500/50' : 'transition-all duration-600 ease-out'}`}
+      style={isDragging && dragPos && dragDimensions ? {
+        position: 'fixed',
+        left: dragPos.x,
+        top: dragPos.y,
+        width: dragDimensions.width,
+        height: dragDimensions.height,
+        zIndex: 9999,
+        pointerEvents: 'none',
+        transform: 'scale(1.05)'
+      } : undefined}
+    >
+      {/* Header - Draggable */}
+      <div
+        className={`bg-slate-800 px-4 py-3 flex items-center justify-between border-b border-slate-700/50 ${!isMainView ? 'cursor-grab active:cursor-grabbing select-none' : ''}`}
+        onMouseDown={(e) => {
+          if (!isMainView && onDragStart && e.button === 0) {
+            e.preventDefault()
+            onDragStart(station.uuid, e)
+          }
+        }}
+        onTouchStart={(e) => {
+          if (!isMainView && onDragStart) {
+            onDragStart(station.uuid, e)
+          }
+        }}
+      >
         <div className="flex items-center gap-3">
-          {isMain && (
-            <span className="bg-amber-500 text-black text-xs font-bold px-2 py-0.5 rounded">
-              MAIN
-            </span>
-          )}
           <div>
             <h3 className={`font-bold ${isMainView ? 'text-xl' : 'text-lg'}`}>{name}</h3>
             <span className="text-sm text-slate-400">{directionLabel}</span>
@@ -56,6 +78,8 @@ function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView 
         <div className="relative">
           <button
             onClick={() => setMenuOpen(!menuOpen)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
             className="text-slate-400 hover:text-white transition-colors p-1"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -69,9 +93,15 @@ function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView 
               <div
                 className="fixed inset-0 z-10"
                 onClick={() => setMenuOpen(false)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
               />
               {/* Dropdown */}
-              <div className="absolute right-0 mt-1 bg-slate-700 rounded-lg shadow-xl border border-slate-600 py-1 z-20 min-w-[160px]">
+              <div
+                className="absolute right-0 mt-1 bg-slate-700 rounded-lg shadow-xl border border-slate-600 py-1 z-20 min-w-[160px]"
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
                 {/* Direction toggles */}
                 <div className="px-3 py-2 border-b border-slate-600">
                   <span className="text-xs text-slate-400 uppercase tracking-wide">Direction</span>
@@ -204,8 +234,8 @@ function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView 
 
             {/* Right - Rest of trains (with direction) */}
             {arrivals.length > 3 && (
-              <div className="w-72 flex flex-col justify-center gap-1">
-                {arrivals.slice(3, 9).map((arrival, index) => (
+              <div className="w-72 flex flex-col justify-between py-3">
+                {arrivals.slice(3, 8).map((arrival, index) => (
                   <CompactArrival
                     key={`${arrival.line}-${arrival.time}-${index}`}
                     arrival={arrival}
@@ -231,6 +261,22 @@ function StationCard({ station, onRemove, onSetMain, onSetDirection, isMainView 
       </div>
     </div>
   )
+
+  if (isDragging) {
+    return (
+      <>
+        {/* Placeholder in the flow */}
+        <div
+          className="rounded-xl border border-transparent opacity-0 bg-slate-800/20"
+          style={dragDimensions ? { width: dragDimensions.width, height: dragDimensions.height } : undefined}
+        />
+        {/* Actual dragged card in portal */}
+        {createPortal(cardContent, document.body)}
+      </>
+    )
+  }
+
+  return cardContent
 }
 
 export default StationCard

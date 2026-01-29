@@ -119,9 +119,10 @@ function AlertCard({ alert, isExpanded, onToggle }) {
   )
 }
 
-function AlertsPanel({ alerts }) {
+function AlertsPanel({ alerts, stations }) {
   const [expandedAlerts, setExpandedAlerts] = useState(new Set())
   const [isCollapsed, setIsCollapsed] = useState(true)
+  const [selectedStationId, setSelectedStationId] = useState('all')
 
   if (!alerts || alerts.length === 0) {
     return null
@@ -143,6 +144,18 @@ function AlertsPanel({ alerts }) {
   const majorCount = alerts.filter(a => a.severity === 'major').length
   const minorCount = alerts.filter(a => a.severity === 'minor').length
   const infoCount = alerts.filter(a => a.severity === 'info').length
+
+  // Filter alerts based on selected station
+  const filteredAlerts = selectedStationId === 'all'
+    ? alerts
+    : alerts.filter(alert => {
+        const station = stations.find(s => s.uuid === selectedStationId)
+        if (!station) return true
+        // Get unique lines for this station from its arrivals
+        const stationLines = new Set(station.arrivals.map(a => a.line))
+        // Check if alert affects any of these lines
+        return alert.routes.some(route => stationLines.has(route))
+      })
 
   return (
     <div className="mb-6">
@@ -189,15 +202,41 @@ function AlertsPanel({ alerts }) {
 
       {/* Alerts List */}
       {!isCollapsed && (
-        <div className="space-y-3">
-          {alerts.map(alert => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              isExpanded={expandedAlerts.has(alert.id)}
-              onToggle={() => toggleAlert(alert.id)}
-            />
-          ))}
+        <div className="bg-slate-900/50 rounded-lg border border-slate-700/50 p-4">
+          {/* Station Filter */}
+          {stations && stations.length > 0 && (
+            <div className="mb-4">
+              <select
+                value={selectedStationId}
+                onChange={(e) => setSelectedStationId(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                <option value="all">All Stations</option>
+                {stations.map(station => (
+                  <option key={station.uuid} value={station.uuid}>
+                    {station.name} ({station.arrivals.map(a => a.line).filter((v, i, a) => a.indexOf(v) === i).join(', ')})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+            {filteredAlerts.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <p>No alerts for this selection</p>
+              </div>
+            ) : (
+              filteredAlerts.map(alert => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  isExpanded={expandedAlerts.has(alert.id)}
+                  onToggle={() => toggleAlert(alert.id)}
+                />
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

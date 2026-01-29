@@ -16,6 +16,16 @@ function App() {
   const [isLedViewOpen, setIsLedViewOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [directionFilter, setDirectionFilter] = useState('all') // 'all', 'N', 'S'
+  const [ledSelectedStations, setLedSelectedStations] = useState([])
+  const [ledDropdownOpen, setLedDropdownOpen] = useState(false)
+  const [dragState, setDragState] = useState({
+    isDragging: false,
+    draggingId: null,
+    dragOrder: null,
+    startPos: { x: 0, y: 0 },
+    currentPos: { x: 0, y: 0 },
+    dragDimensions: { width: 0, height: 0 },
+  })
 
   // Fetch configured stations
   const fetchStations = useCallback(async () => {
@@ -63,6 +73,18 @@ function App() {
     fetchArrivals()
     fetchAlerts()
   }, [fetchStations, fetchArrivals, fetchAlerts])
+
+  // Initialize LED selection with main station
+  useEffect(() => {
+    if (arrivals.length > 0 && ledSelectedStations.length === 0) {
+      const main = arrivals.find(s => s.isMain)
+      if (main) {
+        setLedSelectedStations([main.uuid])
+      } else if (arrivals.length > 0) {
+        setLedSelectedStations([arrivals[0].uuid])
+      }
+    }
+  }, [arrivals, ledSelectedStations.length])
 
   // Poll for arrivals every 10 seconds
   useEffect(() => {
@@ -157,6 +179,112 @@ function App() {
   const mainStation = filteredArrivals.find(a => a.isMain)
   const otherStations = filteredArrivals.filter(a => !a.isMain)
 
+  // Drag and drop handlers
+  const handleDragStart = (uuid, e) => {
+    const point = e.touches ? e.touches[0] : e
+    // The event target is the header, so parentElement is the card
+    const cardEl = e.currentTarget.parentElement
+    const rect = cardEl.getBoundingClientRect()
+    
+    setDragState({
+      isDragging: true,
+      draggingId: uuid,
+      dragOrder: otherStations.map(s => s.uuid),
+      startPos: { x: point.clientX, y: point.clientY },
+      currentPos: { x: point.clientX, y: point.clientY },
+      offsetX: point.clientX - rect.left,
+      offsetY: point.clientY - rect.top,
+      dragDimensions: { width: rect.width, height: rect.height },
+    })
+  }
+
+  const handleDragMove = useCallback((e) => {
+    if (!dragState.isDragging) return
+
+    setDragState(prev => ({
+      ...prev,
+      currentPos: { x: e.clientX, y: e.clientY }
+    }))
+
+    // Check which card we're over
+    const elements = document.elementsFromPoint(e.clientX, e.clientY)
+    const targetCard = elements.find(el => el.dataset.stationId && el.dataset.stationId !== dragState.draggingId)
+
+    if (targetCard) {
+      const targetId = targetCard.dataset.stationId
+      setDragState(prev => {
+        if (!prev.dragOrder) return prev
+        const currentIndex = prev.dragOrder.indexOf(prev.draggingId)
+        const targetIndex = prev.dragOrder.indexOf(targetId)
+
+        if (currentIndex !== -1 && targetIndex !== -1 && currentIndex !== targetIndex) {
+          const newOrder = [...prev.dragOrder]
+          newOrder.splice(currentIndex, 1)
+          newOrder.splice(targetIndex, 0, prev.draggingId)
+          return { ...prev, dragOrder: newOrder }
+        }
+        return prev
+      })
+    }
+  }, [dragState.isDragging, dragState.draggingId])
+
+  const handleDragEnd = useCallback(async () => {
+    if (dragState.isDragging && dragState.dragOrder) {
+      const fullOrder = mainStation ? [mainStation.uuid, ...dragState.dragOrder] : dragState.dragOrder
+
+      try {
+        const response = await fetch('/api/stations/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: fullOrder })
+        })
+        if (!response.ok) throw new Error('Failed to reorder')
+        await fetchArrivals()
+      } catch (err) {
+        setError(err.message)
+      }
+    }
+
+    setDragState({
+      isDragging: false,
+      draggingId: null,
+      dragOrder: null,
+      startPos: { x: 0, y: 0 },
+      currentPos: { x: 0, y: 0 },
+    })
+  }, [dragState.isDragging, dragState.dragOrder, mainStation, fetchArrivals])
+
+  // Global mouse/touch event listeners for drag
+  useEffect(() => {
+    if (dragState.isDragging) {
+      const handleMove = (e) => handleDragMove(e.touches ? e.touches[0] : e)
+      const handleUp = () => handleDragEnd()
+
+      window.addEventListener('mousemove', handleMove)
+      window.addEventListener('mouseup', handleUp)
+      window.addEventListener('touchmove', handleMove)
+      window.addEventListener('touchend', handleUp)
+
+      return () => {
+        window.removeEventListener('mousemove', handleMove)
+        window.removeEventListener('mouseup', handleUp)
+        window.removeEventListener('touchmove', handleMove)
+        window.removeEventListener('touchend', handleUp)
+      }
+    }
+  }, [dragState.isDragging, handleDragMove, handleDragEnd])
+
+  // Get display order for stations (use dragOrder during drag, otherwise normal order)
+  const displayedOtherStations = dragState.dragOrder
+    ? dragState.dragOrder.map(uuid => otherStations.find(s => s.uuid === uuid)).filter(Boolean)
+    : otherStations
+
+  // Calculate drag offset for the dragged card
+  const dragOffset = dragState.isDragging ? {
+    x: dragState.currentPos.x - dragState.startPos.x,
+    y: dragState.currentPos.y - dragState.startPos.y,
+  } : { x: 0, y: 0 }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
       {/* Header */}
@@ -199,16 +327,68 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsLedViewOpen(true)}
-              className="bg-amber-600 hover:bg-amber-700 px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-              title="LED Matrix View"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <span className="hidden sm:inline">LED</span>
-            </button>
+            {/* LED Split Button */}
+            <div className="relative flex items-stretch h-10">
+              <button
+                onClick={() => setIsLedViewOpen(true)}
+                className="bg-amber-600 hover:bg-amber-700 px-3 flex items-center gap-2 rounded-l-lg font-medium transition-colors border-r border-amber-800"
+                title="Open LED Matrix View"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span className="hidden sm:inline">LED</span>
+              </button>
+              <button
+                onClick={() => setLedDropdownOpen(!ledDropdownOpen)}
+                className="bg-amber-600 hover:bg-amber-700 px-2 rounded-r-lg font-medium transition-colors"
+                title="Select Stations for LED"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* LED Station Dropdown */}
+              {ledDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setLedDropdownOpen(false)} />
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-slate-800 rounded-lg shadow-xl border border-slate-700 z-50 overflow-hidden">
+                    <div className="p-2 border-b border-slate-700 bg-slate-900/50">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Show on LED</span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {arrivals.map(station => (
+                        <label key={station.uuid} className="flex items-center px-4 py-3 hover:bg-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="form-checkbox bg-slate-600 border-slate-500 rounded text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-800"
+                            checked={ledSelectedStations.includes(station.uuid)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setLedSelectedStations(prev => [...prev, station.uuid])
+                              } else {
+                                setLedSelectedStations(prev => prev.filter(id => id !== station.uuid))
+                              }
+                            }}
+                          />
+                          <div className="ml-3">
+                            <span className="block text-sm font-medium text-white">{station.name}</span>
+                            <span className="block text-xs text-slate-400">
+                              {station.arrivals.map(a => a.line).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                      {arrivals.length === 0 && (
+                        <div className="px-4 py-3 text-sm text-slate-500">No stations available</div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             <button
               onClick={() => setIsExplorerOpen(true)}
               className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
@@ -240,7 +420,7 @@ function App() {
         )}
 
         {/* Service Alerts */}
-        <AlertsPanel alerts={alerts} />
+        <AlertsPanel alerts={alerts} stations={arrivals} />
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -295,17 +475,29 @@ function App() {
             )}
 
             {/* Other Stations - Grid */}
-            {otherStations.length > 0 && (
+            {displayedOtherStations.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {otherStations.map((station) => (
-                  <StationCard
-                    key={station.uuid}
-                    station={station}
-                    onRemove={() => handleRemoveStation(station.uuid)}
-                    onSetMain={handleSetMain}
-                    onSetDirection={handleSetDirection}
-                  />
-                ))}
+                {displayedOtherStations.map((station) => {
+                  const isDragging = dragState.draggingId === station.uuid
+                  const dragPos = isDragging ? {
+                    x: dragState.currentPos.x - dragState.offsetX,
+                    y: dragState.currentPos.y - dragState.offsetY,
+                  } : null
+
+                  return (
+                    <StationCard
+                      key={station.uuid}
+                      station={station}
+                      onRemove={() => handleRemoveStation(station.uuid)}
+                      onSetMain={handleSetMain}
+                      onSetDirection={handleSetDirection}
+                      onDragStart={handleDragStart}
+                      isDragging={isDragging}
+                      dragPos={dragPos}
+                      dragDimensions={isDragging ? dragState.dragDimensions : null}
+                    />
+                  )
+                })}
               </div>
             )}
           </div>
@@ -329,6 +521,7 @@ function App() {
       <LedMatrixView
         isOpen={isLedViewOpen}
         onClose={() => setIsLedViewOpen(false)}
+        selectedStationIds={ledSelectedStations}
       />
     </div>
   )

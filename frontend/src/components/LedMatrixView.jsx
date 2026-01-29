@@ -16,7 +16,7 @@ const LINE_COLORS = {
 const AMBER = '#FFB81C'
 const GREY = '#646464'
 
-function LedMatrixView({ isOpen, onClose }) {
+function LedMatrixView({ isOpen, onClose, selectedStationIds = [] }) {
   const [arrivals, setArrivals] = useState([])
   const [allArrivals, setAllArrivals] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,9 +28,15 @@ function LedMatrixView({ isOpen, onClose }) {
       const res = await fetch('/api/arrivals')
       const data = await res.json()
 
+      // Filter by selected stations if provided
+      // If selectedStationIds is empty array, show nothing (or handled by empty filteredData)
+      const filteredData = selectedStationIds.length > 0
+        ? data.filter(s => selectedStationIds.includes(s.uuid))
+        : []
+
       // Flatten all arrivals with their direction
       const flattened = []
-      data.forEach(station => {
+      filteredData.forEach(station => {
         station.arrivals.forEach(arrival => {
           flattened.push({
             ...arrival,
@@ -48,7 +54,7 @@ function LedMatrixView({ isOpen, onClose }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedStationIds])
 
   // Filter arrivals based on direction
   useEffect(() => {

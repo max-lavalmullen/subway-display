@@ -1,13 +1,6 @@
 {
   "stations": [
     {
-      "id": "A21",
-      "direction": "all",
-      "name": "81 St-Museum of Natural History",
-      "uuid": "e83d28f5-d6d8-4460-ba2a-936c8564a9dd",
-      "isMain": false
-    },
-    {
       "id": "120",
       "direction": "S",
       "name": "96 St",
@@ -21,10 +14,23 @@
       "uuid": "ea307042-ece1-485d-9f74-ae2e98966d92"
     },
     {
+      "id": "A21",
+      "direction": "all",
+      "name": "81 St-Museum of Natural History",
+      "uuid": "e83d28f5-d6d8-4460-ba2a-936c8564a9dd",
+      "isMain": false
+    },
+    {
       "id": "A33",
       "direction": "N",
       "name": "Spring St",
       "uuid": "4fe55ecc-ba2a-4fd3-be56-096e6ecf8ceb"
+    },
+    {
+      "id": "A24",
+      "direction": "N",
+      "name": "59 St-Columbus Circle",
+      "uuid": "67fd4889-08ba-427f-8836-d2fb2b278fc3"
     }
   ]
 }

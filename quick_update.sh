@@ -66,4 +66,7 @@ ssh "$PI_HOST" << EOF
 EOF
 
 echo ""
+echo "============================================"
+echo "  SUCCESS! Code updated."
+echo "  Your Tunnel URL should still be active."
 echo "============================================

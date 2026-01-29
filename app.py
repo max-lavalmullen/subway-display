@@ -156,6 +156,40 @@ def set_station_direction(station_uuid):
     return jsonify({'success': True}), 200
 
 
+@app.route('/api/stations/reorder', methods=['POST'])
+def reorder_stations():
+    """Reorder stations by providing an array of UUIDs in the desired order."""
+    data = request.get_json()
+    new_order = data.get('order', [])
+
+    if not new_order:
+        return jsonify({'error': 'Order array is required'}), 400
+
+    config = load_station_config()
+
+    # Create a map of uuid -> station
+    station_map = {}
+    for station in config['stations']:
+        key = station.get('uuid') or f"{station['id']}_{station['direction']}"
+        station_map[key] = station
+
+    # Reorder stations based on the new order
+    reordered = []
+    for uuid in new_order:
+        if uuid in station_map:
+            reordered.append(station_map[uuid])
+            del station_map[uuid]
+
+    # Append any stations not in the order list (shouldn't happen, but safety)
+    for station in station_map.values():
+        reordered.append(station)
+
+    config['stations'] = reordered
+    save_station_config(config)
+
+    return jsonify({'success': True}), 200
+
+
 @app.route('/api/stations/available', methods=['GET'])
 def get_available_stations():
     """Search available stations from stations.py."""
